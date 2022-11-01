@@ -20,11 +20,21 @@ import cv2
 import os
 import shutil
 
+MEDIA_SUBDIR = "media"
+COLMAP_SUBDIR = "colmap" 
+COLMAP_TEXT_SUBDIR = "text"
+COLMAP_BIN_SUBDIR = "sparse/0" 
+COLMAP_TRANSFORMS_FILENAME = "transforms.json" 
+
+
+
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="convert a text colmap export to nerf format transforms.json; optionally convert video to images, and optionally run colmap in the first place")
 
-    parser.add_argument("--video", default="", help="input path to the video")
-    parser.add_argument("--images", default="", help="input path to the images folder, ignored if --video is provided")
+    parser.add_argument("--dir", default="data/BB84/", help="input path with media folder containing videos or images.")
+    parser.add_argument("--from_video", action="store_true", help="Whether to run on video or images")
     parser.add_argument("--run_colmap", action="store_true", help="run colmap first on the image folder")
 
     parser.add_argument("--dynamic", action="store_true", help="for dynamic scene, extraly save time calculated from frame index.")
@@ -37,9 +47,8 @@ def parse_args():
     parser.add_argument("--colmap_matcher", default="exhaustive", choices=["exhaustive","sequential","spatial","transitive","vocab_tree"], help="select which matcher colmap should use. sequential for videos, exhaustive for adhoc images")
     parser.add_argument("--skip_early", default=0, help="skip this many images from the start")
 
-    parser.add_argument("--colmap_text", default="colmap_text", help="input path to the colmap text files (set automatically if run_colmap is used)")
     parser.add_argument("--colmap_db", default="colmap.db", help="colmap database filename")
-
+    parser.add_argument("--aabb_scale", default=4, choices=[1,2,4,8,16,32,64], help="Used at training time but written into transforms.json, bbox scale to crop at. Recommended 4 for objects, 16 to 32 for large scenes.")
     args = parser.parse_args()
     return args
 
@@ -56,15 +65,15 @@ def run_ffmpeg(args):
     fps = float(args.video_fps) or 1.0
 
     print(f"running ffmpeg with input video file={video}, output image folder={images}, fps={fps}.")
-    if (input(f"warning! folder '{images}' will be deleted/replaced. continue? (Y/n)").lower().strip()+"y")[:1] != "y":
-        sys.exit(1)
+    # if (input(f"warning! folder '{images}' will be deleted/replaced. continue? (Y/n)").lower().strip()+"y")[:1] != "y":
+    #     sys.exit(1)
 
-    try:
-        shutil.rmtree(images)
-    except:
-        pass
+    # try:
+    #     shutil.rmtree(images)
+    # except:
+    #     pass
 
-    do_system(f"mkdir {images}")
+    # do_system(f"mkdir {images}")
 
     time_slice_value = ""
     time_slice = args.time_slice
@@ -78,10 +87,8 @@ def run_colmap(args):
     db = args.colmap_db
     images = args.images
     text = args.colmap_text
+    sparse = args.colmap_bin_dir
     flag_EAS = int(args.estimate_affine_shape) # 0 / 1
-
-    db_noext = str(Path(db).with_suffix(""))
-    sparse = db_noext + "_sparse"
 
     print(f"running colmap with:\n\tdb={db}\n\timages={images}\n\tsparse={sparse}\n\ttext={text}")
     if (input(f"warning! folders '{sparse}' and '{text}' will be deleted/replaced. continue? (Y/n)").lower().strip()+"y")[:1] != "y":
@@ -157,17 +164,28 @@ def closest_point_2_lines(oa, da, ob, db): # returns point closest to both rays 
 
 if __name__ == "__main__":
     args = parse_args()
+    print(args)
+    main_dir = args.dir
+    media_dir = os.path.join(main_dir, MEDIA_SUBDIR)
+    colmap_dir = os.path.join(main_dir, COLMAP_SUBDIR)
+    os.makedirs(colmap_dir, exist_ok=True)
+    colmap_text = os.path.join(colmap_dir, COLMAP_TEXT_SUBDIR)
+    os.makedirs(colmap_text, exist_ok=True)
+    colmap_bin_dir = os.path.join(colmap_dir, COLMAP_BIN_SUBDIR)
+    os.makedirs(colmap_bin_dir, exist_ok=True)
 
-    if args.video != "":
-        root_dir = os.path.dirname(args.video)
-        args.images = os.path.join(root_dir, "images") # override args.images
+
+
+    args.images = media_dir # Set images to be in media_dir
+    if args.from_video:
+        # Take first Video in media_dir
+        video_name = [f for f in os.listdir(media_dir) if f.endswith(".mp4")][0]
+        args.video = os.path.join(media_dir, video_name)
         run_ffmpeg(args)
-    else:
-        args.images = args.images[:-1] if args.images[-1] == '/' else args.images # remove trailing / (./a/b/ --> ./a/b)
-        root_dir = os.path.dirname(args.images)
-    
-    args.colmap_db = os.path.join(root_dir, args.colmap_db)
-    args.colmap_text = os.path.join(root_dir, args.colmap_text)
+
+    args.colmap_text = colmap_text
+    args.colmap_bin_dir = colmap_bin_dir
+    args.colmap_db = os.path.join(colmap_dir, args.colmap_db)
 
     if args.run_colmap:
         run_colmap(args)
@@ -251,7 +269,7 @@ if __name__ == "__main__":
 
                 name = '_'.join(elems[9:])
                 full_name = os.path.join(args.images, name)
-                rel_name = full_name[len(root_dir) + 1:]
+                rel_name = full_name[len(media_dir) + 1:]
 
                 b = sharpness(full_name)
                 # print(name, "sharpness =",b)
@@ -342,10 +360,11 @@ if __name__ == "__main__":
             "cy": cy,
             "w": w,
             "h": h,
-            "frames": frames,
+            "aabb_scale": args.aabb_scale,
+            "frames": frames
         }
 
-        output_path = os.path.join(root_dir, filename)
+        output_path = os.path.join(colmap_dir, filename)
         print(f"[INFO] writing {len(frames)} frames to {output_path}")
         with open(output_path, "w") as outfile:
             json.dump(out, outfile, indent=2)
