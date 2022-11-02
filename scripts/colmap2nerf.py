@@ -20,13 +20,7 @@ import cv2
 import os
 import shutil
 
-MEDIA_SUBDIR = "media"
-COLMAP_SUBDIR = "colmap" 
-COLMAP_TEXT_SUBDIR = "text"
-COLMAP_BIN_SUBDIR = "sparse/0" 
-COLMAP_TRANSFORMS_FILENAME = "transforms.json" 
-
-
+from utils.ioutils import DataDirs
 
 
 
@@ -39,7 +33,7 @@ def parse_args():
 
     parser.add_argument("--dynamic", action="store_true", help="for dynamic scene, extraly save time calculated from frame index.")
     parser.add_argument("--estimate_affine_shape", action="store_true", help="colmap SiftExtraction option, may yield better results, yet can only be run on CPU.")
-    parser.add_argument('--hold', type=int, default=-1, help="hold out for validation every $ images")
+    parser.add_argument('--hold', type=int, default=-1, help="hold out for validation and test every $ and $ + 1 images")
 
     parser.add_argument("--video_fps", default=3)
     parser.add_argument("--time_slice", default="", help="time (in seconds) in the format t1,t2 within which the images should be generated from the video. eg: \"--time_slice '10,300'\" will generate images only from 10th second to 300th second of the video")
@@ -64,16 +58,8 @@ def run_ffmpeg(args):
     images = args.images
     fps = float(args.video_fps) or 1.0
 
+    #TODO: Add capability to clear all existing images in the folder then run ffmpeg
     print(f"running ffmpeg with input video file={video}, output image folder={images}, fps={fps}.")
-    # if (input(f"warning! folder '{images}' will be deleted/replaced. continue? (Y/n)").lower().strip()+"y")[:1] != "y":
-    #     sys.exit(1)
-
-    # try:
-    #     shutil.rmtree(images)
-    # except:
-    #     pass
-
-    # do_system(f"mkdir {images}")
 
     time_slice_value = ""
     time_slice = args.time_slice
@@ -165,14 +151,16 @@ def closest_point_2_lines(oa, da, ob, db): # returns point closest to both rays 
 if __name__ == "__main__":
     args = parse_args()
     print(args)
-    main_dir = args.dir
-    media_dir = os.path.join(main_dir, MEDIA_SUBDIR)
-    colmap_dir = os.path.join(main_dir, COLMAP_SUBDIR)
+    dirs = DataDirs(args.dir)
+    media_dir = dirs.media_dir
+    colmap_dir = dirs.colmap_dir
     os.makedirs(colmap_dir, exist_ok=True)
-    colmap_text = os.path.join(colmap_dir, COLMAP_TEXT_SUBDIR)
+    colmap_text = dirs.colmap_text
     os.makedirs(colmap_text, exist_ok=True)
-    colmap_bin_dir = os.path.join(colmap_dir, COLMAP_BIN_SUBDIR)
+    colmap_bin_dir = dirs.colmap_bin_dir
     os.makedirs(colmap_bin_dir, exist_ok=True)
+
+    colmap_transforms = dirs.colmap_transforms
 
 
 
@@ -377,11 +365,13 @@ if __name__ == "__main__":
     else:
         all_ids = np.arange(N)
         test_ids = all_ids[::args.hold]
-        train_ids = np.array([i for i in all_ids if i not in test_ids])
+        val_ids = all_ids[1::args.hold]
+        train_ids = np.array([i for i in all_ids if i not in (test_ids + val_ids)])
 
         frames_train = [f for i, f in enumerate(frames) if i in train_ids]
         frames_test = [f for i, f in enumerate(frames) if i in test_ids]
+        frames_val = [f for i, f in enumerate(frames) if i in val_ids]
 
         write_json('transforms_train.json', frames_train)
-        write_json('transforms_val.json', frames_test[::10])
         write_json('transforms_test.json', frames_test)
+        write_json('transforms_val.json', frames_val)
