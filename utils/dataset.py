@@ -54,7 +54,7 @@ class NeRFDataset:
         
         self.poses = []
         self.images = []
-        for f in tqdm.tqdm(frames[:20], desc=f'Loading {type} data'):
+        for f in tqdm.tqdm(frames, desc=f'Loading {type} data'):
             f_path = os.path.join(self.data_dirs.media_dir, f['file_path'])
             
             pose = np.array(f['transform_matrix'], dtype=np.float32) # [4, 4]
