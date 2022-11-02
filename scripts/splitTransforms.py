@@ -19,14 +19,9 @@ def saveJSON(data, f):
 def splitJSON(data, split=10):
     N = len(data['frames'])
     all_ids = np.arange(N)
-    print(all_ids)
-
     test_ids = all_ids[::split]
-    print(test_ids)
     val_ids = all_ids[1::split]
-    print(val_ids)
     train_ids = np.array([i for i in all_ids if i not in np.concatenate((test_ids, val_ids))])
-    print(train_ids)
 
     frames = data['frames']
     # Make two dictionaries with empty frames
