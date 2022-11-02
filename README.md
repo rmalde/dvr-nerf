@@ -17,3 +17,9 @@ For videos run:
 ```
 python scripts/colmap2nerf.py --run_colmap --from_video --colmap_matcher sequential --video_fps 5 --dir data/[folder_name]
 ```
+
+## Train NeRF
+Run
+```
+python3 train.py --model_type tensorf --data_dir data/[dataset_name]
+```
