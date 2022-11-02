@@ -5,6 +5,7 @@ import numpy as np
 
 from utils.dataset import NeRFDataset
 from utils.ioutils import DataDirs
+from utils.utils import get_device
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a nerf on a dataset that has been run through colmap")
@@ -73,7 +74,7 @@ if __name__ == "__main__":
 
     criterion = torch.nn.MSELoss(reduction='none')
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
 
     optimizer = lambda model: torch.optim.Adam(model.get_params(args.lr0, args.lr1), betas=(0.9, 0.99), eps=1e-15)
     scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 200], gamma=0.33)
