@@ -160,10 +160,6 @@ if __name__ == "__main__":
     colmap_bin_dir = dirs.colmap_bin_dir
     os.makedirs(colmap_bin_dir, exist_ok=True)
 
-    colmap_transforms = dirs.colmap_transforms
-
-
-
     args.images = media_dir # Set images to be in media_dir
     if args.from_video:
         # Take first Video in media_dir
