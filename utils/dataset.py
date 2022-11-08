@@ -133,7 +133,7 @@ class NeRFDataset:
 
     def dataloader(self):
         size = len(self.poses)
-        loader = DataLoader(list(range(size)), batch_size=1, collate_fn=self.collate, shuffle=(self.type=='train'), num_workers=0)
+        loader = DataLoader(list(range(size)), batch_size=self.args.batch_size, collate_fn=self.collate, shuffle=(self.type=='train'), num_workers=0)
         # Note: this is the way that torch-ngp does their dataset,
         #       eventually we should change to just deliver
         #       the data properly rather than doing this method

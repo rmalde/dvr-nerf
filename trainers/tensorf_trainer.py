@@ -178,6 +178,9 @@ class TensorfTrainer(Trainer):
 
             torch.save(state, file_path)
 
+            model_path = f"{self.ckpt_path}/{self.name}.pt"
+            torch.save(self.model, model_path)
+
         else:    
             if len(self.stats["results"]) > 0:
                 if self.stats["best_result"] is None or self.stats["results"][-1] < self.stats["best_result"]:

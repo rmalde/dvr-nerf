@@ -29,6 +29,8 @@ from torch_ema import ExponentialMovingAverage
 
 from packaging import version as pver
 
+from utils.utils import extract_geometry
+
 class Trainer(object):
     def __init__(self, 
                  name, # name of this experiment
@@ -50,7 +52,7 @@ class Trainer(object):
                  best_mode='min', # the smaller/larger result, the better
                  use_loss_as_metric=True, # use loss as the first metric
                  report_metric_at_train=False, # also report metrics at training
-                 use_checkpoint="latest", # which ckpt to use at init time
+                 use_checkpoint="scratch", # which ckpt to use at init time
                  use_tensorboardX=True, # whether to use tensorboard for logging
                  scheduler_update_every_step=False, # whether to call scheduler.step() after every train step
                  ):
@@ -134,7 +136,7 @@ class Trainer(object):
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
 
         if self.workspace is not None:
-            if self.use_checkpoint == "scratch":
+            if self.use_checkpoint == "scratch" or True:
                 self.log("[INFO] Training from scratch ...")
             elif self.use_checkpoint == "latest":
                 self.log("[INFO] Loading latest checkpoint ...")
@@ -582,7 +584,7 @@ class Trainer(object):
 
         state = {
             'epoch': self.epoch,
-            'stats': self.stats,
+            'stats': self.stats
         }
 
         if self.model.cuda_ray:
@@ -601,22 +603,28 @@ class Trainer(object):
             state['model'] = self.model.state_dict()
 
             file_path = f"{self.ckpt_path}/{self.name}_ep{self.epoch:04d}.pth.tar"
-
+            
             self.stats["checkpoints"].append(file_path)
 
             if len(self.stats["checkpoints"]) > self.max_keep_ckpt:
                 old_ckpt = self.stats["checkpoints"].pop(0)
+
                 if os.path.exists(old_ckpt):
                     os.remove(old_ckpt)
 
+            model_path = f"{self.ckpt_path}/{self.name}.pt"
+            self.model.save(model_path)
+
             torch.save(state, file_path)
 
-        else:    
+
+        else:
             if len(self.stats["results"]) > 0:
                 if self.stats["best_result"] is None or self.stats["results"][-1] < self.stats["best_result"]:
                     self.log(f"[INFO] New best result: {self.stats['best_result']} --> {self.stats['results'][-1]}")
                     self.stats["best_result"] = self.stats["results"][-1]
-
+                    model_path = f"{self.ckpt_path}/{self.name}_best.pt"
+                    self.model.save(model_path)
                     # save ema results 
                     if self.ema is not None:
                         self.ema.store()
@@ -690,3 +698,26 @@ class Trainer(object):
                 self.log("[INFO] loaded scaler.")
             except:
                 self.log("[WARN] Failed to load scaler.")
+
+
+    def save_mesh(self, save_path=None, resolution=256, threshold=10):
+
+        if save_path is None:
+            save_path = os.path.join(self.workspace, 'meshes', f'{self.name}_{self.epoch}.ply')
+
+        self.log(f"==> Saving mesh to {save_path}")
+
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        def query_func(pts):
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(enabled=self.fp16):
+                    sigma = self.model.density(pts.to(self.device))['sigma']
+            return sigma
+
+        vertices, triangles = extract_geometry(self.model.aabb_infer[:3], self.model.aabb_infer[3:], resolution=resolution, threshold=threshold, query_func=query_func)
+
+        mesh = trimesh.Trimesh(vertices, triangles, process=False) # important, process=True leads to seg fault...
+        mesh.export(save_path)
+
+        self.log(f"==> Finished saving mesh.")

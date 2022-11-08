@@ -20,6 +20,8 @@ def parse_args():
     parser.add_argument('--color_space', type=str, default='srgb', help="Color space, supports (linear, srgb)")
     parser.add_argument('--preload', action='store_true', help="preload all data into GPU, accelerate training but use more GPU memory")
     parser.add_argument('--downscale', type=int, default=1, help="factor by which to downscale all images")
+    parser.add_argument('--batch_size', type=int, default=1, help="Batch size for dataset")
+    parser.add_argument('--max_epochs', type=int, default=300, help="Max epochs to run model")
     
     # model options
     parser.add_argument('--bound', type=float, default=2, help="assume the scene is bounded in box[-bound, bound]^3, if > 1, will invoke adaptive ray marching.")
@@ -78,7 +80,8 @@ if __name__ == "__main__":
 
     optimizer = lambda model: torch.optim.Adam(model.get_params(args.lr0, args.lr1), betas=(0.9, 0.99), eps=1e-15)
     scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 200], gamma=0.33)
-    trainer = Trainer('ngp', args, model, device=device, workspace=args.workspace, optimizer=optimizer, criterion=criterion, ema_decay=None, fp16=args.fp16, lr_scheduler=scheduler, metrics=[], use_checkpoint=args.ckpt, eval_interval=50)
+    workspace = DataDirs(args.data_dir).workspace
+    trainer = Trainer('ngp', args, model, device=device, workspace=workspace, optimizer=optimizer, criterion=criterion, ema_decay=None, fp16=args.fp16, lr_scheduler=scheduler, metrics=[], use_checkpoint=args.ckpt, eval_interval=50)
 
     # calc upsample target resolutions - not sure what this does
     upsample_resolutions = (np.round(np.exp(np.linspace(np.log(args.resolution0), np.log(args.resolution1), len(args.upsample_model_steps) + 1)))).astype(np.int32).tolist()[1:]
@@ -89,6 +92,6 @@ if __name__ == "__main__":
     train_loader = NeRFDataset(data_dirs, args, device=device, type='train').dataloader()
     valid_loader = NeRFDataset(data_dirs, args, device=device, type='val', downscale=2).dataloader()
     print("Starting training: =============================")
-    trainer.train(train_loader, valid_loader, 300)
+    trainer.train(train_loader, valid_loader, args.max_epochs)
     print("Done training ================================")
     trainer.save_mesh(resolution=256, threshold=0.1)
