@@ -9,7 +9,7 @@ import trimesh
 from packaging import version as pver
 
 from utils.ioutils import DataDirs
-from utils.utils import custom_meshgrid
+from utils.utils import custom_meshgrid, get_device
 
 
 
@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Given a trained nerf model, create a mesh")
     
     parser.add_argument('--mesher_type', type=str, default='marching_cubes', choices=['marching_cubes','mobile_nerf'], help="Which meshing_algorithm to mesh with")
-    parser.add_argument('--model_checkpoint', type=str, default='', choices=['marching_cubes','mobile_nerf'], help="Which meshing_algorithm to mesh with")
+    parser.add_argument('--model_checkpoint', type=str, default='', help="Which meshing_algorithm to mesh with")
     parser.add_argument('--mesh_save_path', type=str, default='workspace/mesh.obj')
 
     parser.add_argument('--resolution', type=int, default=256)
@@ -33,6 +33,8 @@ class BaseMesher:
 
         self.resolution = resolution
         self.threshold = threshold
+        self.fp16 = False
+        self.device = get_device()
 
         os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
 
@@ -90,12 +92,12 @@ class MarchingCubesMesher(BaseMesher):
 if __name__ == "__main__":
     args = parse_args()
 
-    data_dirs = DataDirs(args.data_dir)
+    # data_dirs = DataDirs(args.data_dir)
     model = torch.load(args.model_checkpoint)
 
     masher = None
     if args.mesher_type == 'marching_cubes':
-        mesher = MarchingCubesMesher(model, args.save_path, resolution=args.resolution, threshold=args.threshold)
+        mesher = MarchingCubesMesher(model, args.mesh_save_path, resolution=args.resolution, threshold=args.threshold)
     elif args.mesher_type == 'mobile_nerf':
         raise NotImplementedError
         # mesher = MobileNerfMesher()
