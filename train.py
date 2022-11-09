@@ -7,6 +7,8 @@ from utils.dataset import NeRFDataset
 from utils.ioutils import DataDirs
 from utils.utils import get_device
 
+from mesh.mesher import MarchingCubesMesher
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a nerf on a dataset that has been run through colmap")
     
@@ -94,4 +96,8 @@ if __name__ == "__main__":
     print("Starting training: =============================")
     trainer.train(train_loader, valid_loader, args.max_epochs)
     print("Done training ================================")
-    trainer.save_mesh(resolution=256, threshold=0.1)
+    
+    mesh_save_path = "workspace/obj.py"  #TODO: change this to something editable
+    mesher = MarchingCubesMesher(model, mesh_save_path)
+    mesher.mesh()
+
