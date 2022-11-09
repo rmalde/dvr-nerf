@@ -66,7 +66,7 @@ class NeRFGUI:
         self.trainer = trainer
         self.train_loader = train_loader
         if train_loader is not None:
-            self.trainer.error_map = train_loader._data.error_map
+            self.trainer.error_map = False
 
         self.render_buffer = np.zeros((self.W, self.H, 3), dtype=np.float32)
         self.need_update = True # camera moved, should reset accumulation

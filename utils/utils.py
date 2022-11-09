@@ -31,8 +31,8 @@ from torch_ema import ExponentialMovingAverage
 from packaging import version as pver
 import lpips
 
-def get_device():
-    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+def get_device(num=0):
+    return torch.device(f'cuda:{num}' if torch.cuda.is_available() else 'cpu')
 
 def custom_meshgrid(*args):
     # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid

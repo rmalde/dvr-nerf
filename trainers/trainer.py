@@ -136,7 +136,7 @@ class Trainer(object):
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
 
         if self.workspace is not None:
-            if self.use_checkpoint == "scratch" or True:
+            if self.use_checkpoint == "scratch":
                 self.log("[INFO] Training from scratch ...")
             elif self.use_checkpoint == "latest":
                 self.log("[INFO] Loading latest checkpoint ...")
@@ -721,3 +721,22 @@ class Trainer(object):
         mesh.export(save_path)
 
         self.log(f"==> Finished saving mesh.")
+    
+    def save_mobilenerf_mesh(self, save_path=None, resolution=256, threshold=10):
+        if save_path is None:
+            save_path = os.path.join(self.workspace, 'meshes', f'{self.name}_{self.epoch}.ply')
+
+        self.log(f"==> Saving mesh to {save_path}")
+
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        def query_func(pts):
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(enabled=self.fp16):
+                    sigma = self.model.density(pts.to(self.device))['sigma']
+            return sigma
+        return 
+        vertices, triangles = get_mobilenerf()
+
+        mesh = trimesh.Trimesh(vertices, triangles, process=False) # important, process=True leads to seg fault...
+        mesh.export(save_path)

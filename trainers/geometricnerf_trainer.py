@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import numpy as np
 
 
-class TensorfTrainer(Trainer):
+class geometricNeRFTrainer(Trainer):
     def __init__(self, 
                  name, # name of this experiment
                  opt, # extra conf
