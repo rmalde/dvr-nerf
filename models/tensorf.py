@@ -157,8 +157,7 @@ class NeRFNetwork(NeRFRenderer):
 
         ##testing prune
         threshold = self.bound/ 2.0
-        sigma[sigma < threshold] = 0.0
-        sigma[sigma > threshold] = 1.0
+        sigma = F.threshold(sigma,threshold=threshold)
 
         return {
             'sigma': sigma,
