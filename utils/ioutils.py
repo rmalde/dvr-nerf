@@ -6,6 +6,7 @@ COLMAP_TEXT_SUBDIR = "text"
 COLMAP_BIN_SUBDIR = "sparse/0" 
 WORKSPACE_SUBDIR = "workspace" 
 COLMAP_TRANSFORMS_FILENAME = "transforms.json" 
+MESH_SUBDIR = "mesh"
 
 class DataDirs:
     def __init__(self, dataset_dir):
@@ -14,4 +15,5 @@ class DataDirs:
         self.colmap_text = join(self.colmap_dir, COLMAP_TEXT_SUBDIR)
         self.colmap_bin_dir = join(self.colmap_dir, COLMAP_BIN_SUBDIR)
         self.workspace = join(dataset_dir, WORKSPACE_SUBDIR)
+        self.mesh_dir = join(dataset_dir, MESH_SUBDIR)
 
