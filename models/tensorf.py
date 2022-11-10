@@ -155,6 +155,11 @@ class NeRFNetwork(NeRFRenderer):
         sigma_feat = self.get_sigma_feat(x)
         sigma = F.relu(sigma_feat, inplace=True)
 
+        ##testing prune
+        threshold = self.bound/ 2.0
+        sigma[sigma < threshold] = 0.0
+        sigma[sigma > threshold] = 1.0
+
         return {
             'sigma': sigma,
         }
