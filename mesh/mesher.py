@@ -43,7 +43,6 @@ class BaseMesher:
 
 
 class MarchingCubesMesher(BaseMesher):
-
     def query_func(self, pts):
             with torch.no_grad():
                 with torch.cuda.amp.autocast(enabled=self.fp16):
@@ -56,6 +55,10 @@ class MarchingCubesMesher(BaseMesher):
         mesh = trimesh.Trimesh(vertices, triangles, process=False) # important, process=True leads to seg fault...
         mesh.export(self.save_path)
         f"==> Finished saving mesh to {self.save_path}"
+    
+class MobileNerfMesher(BaseMesher):
+    def mesh(self):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":
