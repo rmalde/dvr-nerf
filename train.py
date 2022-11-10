@@ -97,7 +97,7 @@ if __name__ == "__main__":
     trainer.train(train_loader, valid_loader, args.max_epochs)
     print("Done training ================================")
     
-    mesh_save_path = "workspace/obj.py"  #TODO: change this to something editable
+    mesh_save_path = "workspace/mesh.obj"  #TODO: change this to something editable
     mesher = MarchingCubesMesher(model, mesh_save_path)
     mesher.mesh()
 
