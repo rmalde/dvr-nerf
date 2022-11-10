@@ -56,7 +56,8 @@ class Trainer(object):
                  use_tensorboardX=True, # whether to use tensorboard for logging
                  scheduler_update_every_step=False, # whether to call scheduler.step() after every train step
                  ):
-        
+
+        self.log_ptr = None
         self.name = name
         self.opt = opt
         self.mute = mute
@@ -122,7 +123,6 @@ class Trainer(object):
             self.best_mode = 'min'
 
         # workspace prepare
-        self.log_ptr = None
         if self.workspace is not None:
             os.makedirs(self.workspace, exist_ok=True)        
             self.log_path = os.path.join(workspace, f"log_{self.name}.txt")

@@ -65,7 +65,8 @@ class NeRFNetwork(NeRFRenderer):
     def __init__(self,
                  resolution=[128] * 3,
                  num_layers=3,
-                 hidden_dim=128,
+                 hidden_dim=256,
+                 in_dim=6,
                  number_of_geometric_fn=100,
                  bound=1,
                  **kwargs
@@ -77,25 +78,31 @@ class NeRFNetwork(NeRFRenderer):
         # render module (default to freq feat + freq dir)
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
-        hidden_layers = []
+        self.in_dim = in_dim
+        layers = [
+            nn.Linear(self.in_dim, hidden_dim), # x, y, z, [unit vector direction]
+            nn.ReLU(),
+        ]
         for _ in range(num_layers):
-            hidden_layers += [
+            layers += [
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU()
             ]
-        print(hidden_layers)
-        print(*hidden_layers)
-
-        self.encoder = nn.Sequential([
-            nn.Linear(6, hidden_dim), # x, y, z, [unit vector direction]
-            nn.ReLU(),
-            *hidden_layers,
+        layers.append(
             # Each geometric fn has x_1 * sin(x theta) + x_2 * cos(x phi) +
             # x_1 * sin(y theta) + x_2 * cos(y phi) +
             # x_1 * sin(z theta) + x_2 * cos(z phi)
-            nn.Linear(hidden_dim, 6*number_of_geometric_fn+1), 
-        ])
+            nn.Linear(hidden_dim, 6*number_of_geometric_fn+1)
+        )
+
+        self.mat_ids = [[0, 1], [0, 2], [1, 2]]
+        self.vec_ids = [2, 1, 0]
+
+        self.encoder = nn.Sequential(*layers)
         self.mesh = None
+        self.scene = None
+        
+        self.r = pyrender.OffscreenRenderer(viewport_width=resolution[0], viewport_height=resolution[1], point_size=1.0)
 
         color_net = []
         for l in range(num_layers):
@@ -143,18 +150,78 @@ class NeRFNetwork(NeRFRenderer):
     def forward(self, x, d):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], nomalized in [-1, 1]
-
-        # normalize to [-1, 1]
+        N = x.shape[0]
+        # N, fn_coefs
         func_coefs = self.encoder(torch.cat((x, d), dim=1))
-        self.mesh = self.decoder(func_coefs)
+        colors, depths = torch.zeros((n, self.resolution[0], self.resolution[1], 3)), torch.empty_like((n, self.resolution[0], self.resolution[1], 1))
+        for n in range(N):
+            self.mesh = self.decoder(func_coefs)
+            mesh = pyrender.Mesh.from_trimesh(self.mesh, smooth=False)
+            self.scene = pyrender.Scene(ambient_light= [0.3,0.3,0.3, 1.0])
+            self.scene.add(mesh)
+            camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1)
 
-        mesh = pyrender.Mesh.from_trimesh(self.mesh, smooth=False)
-        scene = pyrender.Scene(ambient_lgith = [0.3,0.3,0.3, 1.0])
-        scene.add(mesh)
-        pyrender.Viewer(scene)
+            # https://gamedev.stackexchange.com/questions/45298/convert-orientation-vec3-to-a-rotation-matrix
+            c1 = np.sqrt(d[n, 0]**2 + d[n, 1]**2)
+            s1 =d[n, 2]
 
-        return self.mesh
+            c2 = d[n, 0] / c1
+            s2 = d[n, 1] / c1
+            cam_pose = np.array([
+                [d[n, 0], -s2, -s1*c2, x[n, 0]],
+                [d[n, 1], c2, -s1*s2, x[n, 1]],
+                [d[n, 2],  0,     c1, x[n, 2]],
+                [      0,  0,      0,       1],
+            ])
+            self.scene.add(camera, pose=cam_pose)
+            color, depth = self.r.render(self.scene)
+            colors[n] = color
+            depths[n] = depth
+            self.scene.remove_node(camera)
 
+        return colors, depths
+
+
+    def get_sigma_feat(self, x):
+        # x: [N, 3], in [-1, 1]
+        self.scene
+        N = x.shape[0]
+
+        # line basis
+        vec_coord = torch.stack((x[..., self.vec_ids[0]], x[..., self.vec_ids[1]], x[..., self.vec_ids[2]]))
+        vec_coord = torch.stack((torch.zeros_like(vec_coord), vec_coord), dim=-1).view(3, -1, 1, 2) # [3, N, 1, 2], fake 2d coord
+
+        vec_feat = F.grid_sample(self.sigma_vec[0], vec_coord[[0]], align_corners=True).view(-1, N) * \
+                   F.grid_sample(self.sigma_vec[1], vec_coord[[1]], align_corners=True).view(-1, N) * \
+                   F.grid_sample(self.sigma_vec[2], vec_coord[[2]], align_corners=True).view(-1, N) # [R, N]
+
+        sigma_feat = torch.sum(vec_feat, dim=0)
+
+        return sigma_feat
+
+
+    def get_color_feat(self, x):
+        # x: [N, 3], in [-1, 1]
+
+        N = x.shape[0]
+
+        # plane + line basis
+        mat_coord = torch.stack((x[..., self.mat_ids[0]], x[..., self.mat_ids[1]], x[..., self.mat_ids[2]])).detach().view(3, -1, 1, 2) # [3, N, 1, 2]
+        vec_coord = torch.stack((x[..., self.vec_ids[0]], x[..., self.vec_ids[1]], x[..., self.vec_ids[2]]))
+        vec_coord = torch.stack((torch.zeros_like(vec_coord), vec_coord), dim=-1).detach().view(3, -1, 1, 2) # [3, N, 1, 2], fake 2d coord
+
+        mat_feat, vec_feat = [], []
+
+        for i in range(len(self.color_mat)):
+            mat_feat.append(F.grid_sample(self.color_mat[i], mat_coord[[i]], align_corners=True).view(-1, N)) # [1, R, N, 1] --> [R, N]
+            vec_feat.append(F.grid_sample(self.color_vec[i], vec_coord[[i]], align_corners=True).view(-1, N)) # [R, N]
+        
+        mat_feat = torch.cat(mat_feat, dim=0) # [3 * R, N]
+        vec_feat = torch.cat(vec_feat, dim=0) # [3 * R, N]
+
+        color_feat = self.basis_mat((mat_feat * vec_feat).T) # [N, 3R] --> [N, color_feat_dim]
+
+        return color_feat
 
     def density(self, x):
         # x: [N, 3], in [-bound, bound]
@@ -213,10 +280,13 @@ class NeRFNetwork(NeRFRenderer):
             loss = loss + torch.mean(torch.abs(self.sigma_mat[i])) + torch.mean(torch.abs(self.sigma_vec[i]))
         return loss
 
+    @torch.no_grad()
+    def upsample_model(self, resolution):
+        self.resolution = resolution
     
 
     # optimizer utils
     def get_params(self, lr1, lr2):
         return [
-            {'params': self.encoder, 'lr': lr1}, 
+            {'params': self.encoder.parameters(), 'lr': lr1}, 
         ]
