@@ -54,7 +54,7 @@ class MarchingCubesMesher(BaseMesher):
 
         mesh = trimesh.Trimesh(vertices, triangles, process=False) # important, process=True leads to seg fault...
         mesh.export(self.save_path)
-        f"==> Finished saving mesh to {self.save_path}"
+        print(f"==> Finished saving mesh to {self.save_path}")
     
 class MobileNerfMesher(BaseMesher):
     def mesh(self):
