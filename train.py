@@ -19,7 +19,7 @@ def parse_args():
     parser.add_argument('--test', action='store_true', help="test mode")
 
     # ### dataset options
-    parser.add_argument('--data_dir', type=str, required=True, help="Directory of dataset, for example data/BBB86")
+    parser.add_argument('--data_dir', default="data/BB86", type=str, help="Directory of dataset, for example data/BBB86")
     parser.add_argument('--color_space', type=str, default='srgb', help="Color space, supports (linear, srgb)")
     parser.add_argument('--preload', action='store_true', help="preload all data into GPU, accelerate training but use more GPU memory")
     parser.add_argument('--downscale', type=int, default=1, help="factor by which to downscale all images")
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     trainer.train(train_loader, valid_loader, args.max_epochs)
     print("Done training ================================")
     
-    mesh_save_path = "workspace/mesh.obj"  #TODO: change this to something editable
+    mesh_save_path = "workspace/mesh-finetuned.obj"  #TODO: change this to something editable
     mesher = MarchingCubesMesher(model, mesh_save_path)
     mesher.mesh()
-
+    print(f"Saved mesh to {mesh_save_path}")

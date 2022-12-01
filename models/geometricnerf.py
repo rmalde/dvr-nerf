@@ -9,6 +9,9 @@ from nerf.renderer import NeRFRenderer
 
 import pygalmesh
 import trimesh
+from trimesh.visual import ColorVisuals
+from utils.utils import get_device
+
 import pyrender
 
 class SinCosFn():
@@ -74,6 +77,8 @@ class NeRFNetwork(NeRFRenderer):
         super().__init__(bound, **kwargs)
 
         self.resolution = resolution
+        self.device = get_device()
+
 
         # render module (default to freq feat + freq dir)
         self.num_layers = num_layers
@@ -120,7 +125,6 @@ class NeRFNetwork(NeRFRenderer):
 
         self.color_net = nn.ModuleList(color_net)
 
-
     def decoder(self, gemotric_coefs):
         n = len(gemotric_coefs)
         combined_mesh = None
@@ -146,7 +150,6 @@ class NeRFNetwork(NeRFRenderer):
 
         return combined_mesh
 
-
     def forward(self, x, d):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], nomalized in [-1, 1]
@@ -154,13 +157,12 @@ class NeRFNetwork(NeRFRenderer):
         # N, fn_coefs
         func_coefs = self.encoder(torch.cat((x, d), dim=1))
         colors, depths = torch.zeros((n, self.resolution[0], self.resolution[1], 3)), torch.empty_like((n, self.resolution[0], self.resolution[1], 1))
+        self.mesh = self.decoder(func_coefs)
+        mesh = pyrender.Mesh.from_trimesh(self.mesh, smooth=False)
+        self.scene = pyrender.Scene(ambient_light= [0.3,0.3,0.3, 1.0])
+        self.scene.add(mesh)
+        camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1)
         for n in range(N):
-            self.mesh = self.decoder(func_coefs)
-            mesh = pyrender.Mesh.from_trimesh(self.mesh, smooth=False)
-            self.scene = pyrender.Scene(ambient_light= [0.3,0.3,0.3, 1.0])
-            self.scene.add(mesh)
-            camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1)
-
             # https://gamedev.stackexchange.com/questions/45298/convert-orientation-vec3-to-a-rotation-matrix
             c1 = np.sqrt(d[n, 0]**2 + d[n, 1]**2)
             s1 =d[n, 2]
@@ -181,47 +183,21 @@ class NeRFNetwork(NeRFRenderer):
 
         return colors, depths
 
-
     def get_sigma_feat(self, x):
         # x: [N, 3], in [-1, 1]
-        self.scene
+
+        # self.scene
         N = x.shape[0]
+        # for n in range(N):
+        #     xyz = x[n]
 
-        # line basis
-        vec_coord = torch.stack((x[..., self.vec_ids[0]], x[..., self.vec_ids[1]], x[..., self.vec_ids[2]]))
-        vec_coord = torch.stack((torch.zeros_like(vec_coord), vec_coord), dim=-1).view(3, -1, 1, 2) # [3, N, 1, 2], fake 2d coord
-
-        vec_feat = F.grid_sample(self.sigma_vec[0], vec_coord[[0]], align_corners=True).view(-1, N) * \
-                   F.grid_sample(self.sigma_vec[1], vec_coord[[1]], align_corners=True).view(-1, N) * \
-                   F.grid_sample(self.sigma_vec[2], vec_coord[[2]], align_corners=True).view(-1, N) # [R, N]
-
-        sigma_feat = torch.sum(vec_feat, dim=0)
-
-        return sigma_feat
+        return torch.ones((N,)).to(self.device)
 
 
     def get_color_feat(self, x):
         # x: [N, 3], in [-1, 1]
-
         N = x.shape[0]
-
-        # plane + line basis
-        mat_coord = torch.stack((x[..., self.mat_ids[0]], x[..., self.mat_ids[1]], x[..., self.mat_ids[2]])).detach().view(3, -1, 1, 2) # [3, N, 1, 2]
-        vec_coord = torch.stack((x[..., self.vec_ids[0]], x[..., self.vec_ids[1]], x[..., self.vec_ids[2]]))
-        vec_coord = torch.stack((torch.zeros_like(vec_coord), vec_coord), dim=-1).detach().view(3, -1, 1, 2) # [3, N, 1, 2], fake 2d coord
-
-        mat_feat, vec_feat = [], []
-
-        for i in range(len(self.color_mat)):
-            mat_feat.append(F.grid_sample(self.color_mat[i], mat_coord[[i]], align_corners=True).view(-1, N)) # [1, R, N, 1] --> [R, N]
-            vec_feat.append(F.grid_sample(self.color_vec[i], vec_coord[[i]], align_corners=True).view(-1, N)) # [R, N]
-        
-        mat_feat = torch.cat(mat_feat, dim=0) # [3 * R, N]
-        vec_feat = torch.cat(vec_feat, dim=0) # [3 * R, N]
-
-        color_feat = self.basis_mat((mat_feat * vec_feat).T) # [N, 3R] --> [N, color_feat_dim]
-
-        return color_feat
+        return torch.ones((N,3)).to(self.device)
 
     def density(self, x):
         # x: [N, 3], in [-bound, bound]
@@ -244,17 +220,8 @@ class NeRFNetwork(NeRFRenderer):
         # normalize to [-1, 1]
         x = x / self.bound
 
-        if mask is not None:
-            rgbs = torch.zeros(mask.shape[0], 3, dtype=x.dtype, device=x.device) # [N, 3]
-            # in case of empty mask
-            if not mask.any():
-                return rgbs
-            x = x[mask]
-            d = d[mask]
-
         color_feat = self.get_color_feat(x)
         color_feat = self.encoder(color_feat)
-        d = self.encoder_dir(d)
 
         h = torch.cat([color_feat, d], dim=-1)
         for l in range(self.num_layers):
@@ -263,12 +230,7 @@ class NeRFNetwork(NeRFRenderer):
                 h = F.relu(h, inplace=True)
         
         # sigmoid activation for rgb
-        h = torch.sigmoid(h)
-
-        if mask is not None:
-            rgbs[mask] = h.to(rgbs.dtype)
-        else:
-            rgbs = h
+        rgbs = torch.sigmoid(h)
 
         return rgbs
 
