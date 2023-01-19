@@ -1,4 +1,5 @@
-# dvr-nerf
+# DVR-NeRF: Dynamic NeRFs in VR
+Independent research on optimizing mesh construction of Neural Radiance Fields (NeRFs) for real-time rendering in Virtual Reality
 
 ## Setup
 
